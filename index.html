@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Which House Are You?</title>
+<style>
+  :root {
+    --parchment: #f4ecd8;
+    --ink: #2b2620;
+    --gold: #c9a227;
+    --maroon: #740001;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at top, #1a1a2e, #0d0d15 70%);
+    font-family: Georgia, 'Times New Roman', serif;
+    color: var(--parchment);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    max-width: 560px;
+    width: 100%;
+    background: linear-gradient(180deg, #1f1f33, #17172a);
+    border: 2px solid var(--gold);
+    border-radius: 14px;
+    padding: 32px 28px;
+    box-shadow: 0 0 40px rgba(201, 162, 39, 0.15);
+  }
+  h1 {
+    text-align: center;
+    color: var(--gold);
+    letter-spacing: 1px;
+    margin-top: 0;
+    font-size: 1.6em;
+  }
+  .subtitle {
+    text-align: center;
+    opacity: 0.7;
+    margin-bottom: 24px;
+    font-size: 0.9em;
+  }
+  .question {
+    font-size: 1.1em;
+    margin-bottom: 16px;
+    line-height: 1.4;
+  }
+  .options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  button.option {
+    background: #2a2a45;
+    border: 1px solid #444466;
+    color: var(--parchment);
+    padding: 12px 16px;
+    border-radius: 8px;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.98em;
+    transition: all 0.15s ease;
+  }
+  button.option:hover {
+    background: var(--gold);
+    color: #1a1a2e;
+    border-color: var(--gold);
+  }
+  button.option:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .progress {
+    text-align: center;
+    opacity: 0.6;
+    font-size: 0.85em;
+    margin-bottom: 18px;
+  }
+  .result {
+    text-align: center;
+  }
+  .house-name {
+    font-size: 1.8em;
+    margin: 10px 0;
+  }
+  .traits {
+    opacity: 0.85;
+    margin-bottom: 20px;
+    font-style: italic;
+  }
+  .prediction-text {
+    background: rgba(0,0,0,0.25);
+    border-left: 3px solid var(--gold);
+    padding: 14px 16px;
+    text-align: left;
+    line-height: 1.5;
+    border-radius: 6px;
+    white-space: pre-wrap;
+  }
+  .loader {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    opacity: 0.7;
+    margin: 20px 0;
+  }
+  .spinner {
+    width: 18px;
+    height: 18px;
+    border: 3px solid rgba(201,162,39,0.3);
+    border-top-color: var(--gold);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .restart {
+    margin-top: 22px;
+    background: transparent;
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .restart:hover { background: var(--gold); color: #1a1a2e; }
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <h1>Which Hogwarts House Are You?</h1>
+  <div class="subtitle">Answer honestly. The Sorting Hat — and a little AI magic — will decide.</div>
+  <div id="quiz-area"></div>
+</div>
+
+<script>
+// Base question bank (source of truth — never mutated directly)
+// Each option scores 2 points to a primary house and 1 to a secondary house,
+// and no option names a trait word outright — the goal is that no single
+// answer telegraphs which house it's "supposed" to feed.
+const baseQuestions = [
+  {
+    q: "Your team's plan falls apart the night before a deadline. Your actual first move:",
+    opts: [
+      { text: "Rewrite the plan from scratch, alone, right now", scores: { ravenclaw: 2, slytherin: 1 } },
+      { text: "Call everyone and get eyes on the problem together", scores: { hufflepuff: 2, gryffindor: 1 } },
+      { text: "Ship whatever's furthest along and patch the rest live", scores: { gryffindor: 2, slytherin: 1 } },
+      { text: "Quietly figure out who dropped the ball before deciding anything", scores: { slytherin: 2, ravenclaw: 1 } }
+    ]
+  },
+  {
+    q: "You discover a rule at work or school that's pointless and actively slows things down. You:",
+    opts: [
+      { text: "Break it and deal with the consequences later", scores: { gryffindor: 2, slytherin: 1 } },
+      { text: "Build a quiet workaround nobody needs to approve", scores: { slytherin: 2, ravenclaw: 1 } },
+      { text: "Write up exactly why it's broken and who to convince", scores: { ravenclaw: 2, hufflepuff: 1 } },
+      { text: "Follow it, but make it easier on whoever's next", scores: { hufflepuff: 2, ravenclaw: 1 } }
+    ]
+  },
+  {
+    q: "Someone takes credit for your idea in front of your boss. You:",
+    opts: [
+      { text: "Call it out immediately, in the room", scores: { gryffindor: 2, slytherin: 1 } },
+      { text: "Let it go for now, bring it up with them privately later", scores: { hufflepuff: 2, ravenclaw: 1 } },
+      { text: "Say nothing, but make sure it can't happen again", scores: { slytherin: 2, ravenclaw: 1 } },
+      { text: "Calmly lay out exactly what you contributed, with receipts", scores: { ravenclaw: 2, slytherin: 1 } }
+    ]
+  },
+  {
+    q: "It's 2am and a friend calls in a panic over something that isn't really an emergency. You:",
+    opts: [
+      { text: "Go over right away, sort out whether it was urgent later", scores: { gryffindor: 2, hufflepuff: 1 } },
+      { text: "Stay on the phone and talk them down", scores: { hufflepuff: 2, ravenclaw: 1 } },
+      { text: "Ask sharp questions until you understand what's actually going on", scores: { ravenclaw: 2, slytherin: 1 } },
+      { text: "Tell them straight that it can wait until morning", scores: { slytherin: 2, gryffindor: 1 } }
+    ]
+  },
+  {
+    q: "You're handed a task with no instructions and a vague goal. You:",
+    opts: [
+      { text: "Start building and fix mistakes as they show up", scores: { gryffindor: 2, ravenclaw: 1 } },
+      { text: "Ask around until you actually understand what's wanted", scores: { hufflepuff: 2, ravenclaw: 1 } },
+      { text: "Map out every possible approach before touching anything", scores: { ravenclaw: 2, slytherin: 1 } },
+      { text: "Do the version that makes you look best when it's done", scores: { slytherin: 2, gryffindor: 1 } }
+    ]
+  },
+  {
+    q: "You spot a loophole that would basically guarantee you win something you care about. You:",
+    opts: [
+      { text: "Use it — a win is a win", scores: { slytherin: 2, gryffindor: 1 } },
+      { text: "Use it, then tell the organizers about it afterward", scores: { ravenclaw: 2, slytherin: 1 } },
+      { text: "Skip it, it wouldn't feel earned", scores: { hufflepuff: 2, gryffindor: 1 } },
+      { text: "Flag it to the organizers privately before anyone can exploit it", scores: { hufflepuff: 2, slytherin: 1 } }
+    ]
+  },
+  {
+    q: "Which of these is more uncomfortable for you?",
+    opts: [
+      { text: "Being wrong in front of people you respect", scores: { ravenclaw: 2, slytherin: 1 } },
+      { text: "Watching someone get hurt and doing nothing", scores: { gryffindor: 2, hufflepuff: 1 } },
+      { text: "Letting someone down who was counting on you", scores: { hufflepuff: 2, gryffindor: 1 } },
+      { text: "Losing control of a situation you should've predicted", scores: { slytherin: 2, ravenclaw: 1 } }
+    ]
+  },
+  {
+    q: "You get blunt feedback that your recent work wasn't good enough. Your gut reaction:",
+    opts: [
+      { text: "Prove them wrong with the next attempt", scores: { gryffindor: 2, slytherin: 1 } },
+      { text: "Sit with it a bit, then ask exactly what to fix", scores: { hufflepuff: 2, ravenclaw: 1 } },
+      { text: "Pull the feedback apart to see if it's even accurate", scores: { ravenclaw: 2, slytherin: 1 } },
+      { text: "File it away and quietly decide who's worth listening to", scores: { slytherin: 2, ravenclaw: 1 } }
+    ]
+  },
+  {
+    q: "Finish the sentence that feels most true: \"People who know me well would say I...\"",
+    opts: [
+      { text: "...jump first and figure it out in the air", scores: { gryffindor: 2, slytherin: 1 } },
+      { text: "...show up, no matter how long it's been", scores: { hufflepuff: 2, gryffindor: 1 } },
+      { text: "...notice things other people miss", scores: { ravenclaw: 2, slytherin: 1 } },
+      { text: "...usually get what I came for", scores: { slytherin: 2, gryffindor: 1 } }
+    ]
+  },
+  {
+    q: "You're the last one who could stop a mistake about to cost the whole group. Speaking up will make things awkward. You:",
+    opts: [
+      { text: "Say it loudly, right then, awkward or not", scores: { gryffindor: 2, hufflepuff: 1 } },
+      { text: "Pull one key person aside quietly first", scores: { slytherin: 2, ravenclaw: 1 } },
+      { text: "Say it, but frame it so no one feels blamed", scores: { hufflepuff: 2, ravenclaw: 1 } },
+      { text: "Lay out the exact cost of staying silent, then decide", scores: { ravenclaw: 2, slytherin: 1 } }
+    ]
+  }
+];
+
+const houseInfo = {
+  gryffindor: { name: "Gryffindor", traits: "Courage, daring, nerve, and chivalry", color: "#d1555c" },
+  hufflepuff: { name: "Hufflepuff", traits: "Loyalty, patience, fairness, and hard work", color: "#ecb939" },
+  ravenclaw:  { name: "Ravenclaw",  traits: "Wit, learning, curiosity, and wisdom", color: "#6f93e0" },
+  slytherin:  { name: "Slytherin",  traits: "Ambition, cunning, resourcefulness, and drive", color: "#4caf6e" }
+};
+
+// Fisher-Yates shuffle — returns a new shuffled array, leaves the input untouched
+function shuffle(arr) {
+  const copy = arr.slice();
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+// Build a fresh randomized run: question order AND each question's option order are scrambled
+function buildSessionQuestions() {
+  return shuffle(baseQuestions).map(q => ({
+    q: q.q,
+    opts: shuffle(q.opts)
+  }));
+}
+
+let sessionQuestions = buildSessionQuestions();
+let current = 0;
+let totals = { gryffindor: 0, hufflepuff: 0, ravenclaw: 0, slytherin: 0 };
+const answerLog = [];
+const quizArea = document.getElementById('quiz-area');
+
+function renderQuestion() {
+  const q = sessionQuestions[current];
+  quizArea.innerHTML = `
+    <div class="progress">Question ${current + 1} of ${sessionQuestions.length}</div>
+    <div class="question">${q.q}</div>
+    <div class="options">
+      ${q.opts.map((o, i) => `<button class="option" data-i="${i}">${o.text}</button>`).join('')}
+    </div>
+  `;
+  const buttons = quizArea.querySelectorAll('.option');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      // Prevent double-counting if a click fires twice before the next render
+      buttons.forEach(b => b.disabled = true);
+      const opt = q.opts[parseInt(btn.dataset.i)];
+      answerLog.push(opt.text);
+      for (const house in opt.scores) {
+        totals[house] = (totals[house] || 0) + opt.scores[house];
+      }
+      current++;
+      if (current < sessionQuestions.length) {
+        renderQuestion();
+      } else {
+        showLoading();
+        getPrediction();
+      }
+    });
+  });
+}
+
+function topHouse() {
+  return Object.entries(totals).sort((a, b) => b[1] - a[1])[0][0];
+}
+
+function showLoading() {
+  quizArea.innerHTML = `
+    <div class="loader"><div class="spinner"></div> Consulting the Sorting Hat...</div>
+  `;
+}
+
+async function getPrediction() {
+  const house = topHouse();
+  const info = houseInfo[house];
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        messages: [
+          {
+            role: "user",
+            content: `Based on these quiz answers: ${answerLog.join('; ')}. The scoring points to the house "${info.name}" (associated with: ${info.traits}). Write a short, warm, personalized 3-4 sentence "sorting" verdict as if the Sorting Hat itself is speaking directly to this person, explaining why they belong in this house based on their specific answers. Do not mention scores or points. Keep it original and in your own words, second person ("you").`
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) throw new Error(`API returned ${response.status}`);
+
+    const data = await response.json();
+    const text = data.content.map(b => b.text || "").join("\n").trim();
+    renderResult(house, text || null);
+  } catch (err) {
+    renderResult(house, null);
+  }
+}
+
+function renderResult(house, prediction) {
+  const info = houseInfo[house];
+  quizArea.innerHTML = `
+    <div class="result">
+      <div>The Sorting Hat has decided...</div>
+      <div class="house-name" style="color:${info.color}">${info.name}</div>
+      <div class="traits">${info.traits}</div>
+      <div class="prediction-text">${prediction ? prediction : "The Hat is unusually quiet just now, but its choice stands all the same."}</div>
+      <button class="restart" id="restart-btn">Take the quiz again</button>
+    </div>
+  `;
+  document.getElementById('restart-btn').addEventListener('click', restart);
+}
+
+function restart() {
+  sessionQuestions = buildSessionQuestions(); // reshuffle for a fresh order each run
+  current = 0;
+  totals = { gryffindor: 0, hufflepuff: 0, ravenclaw: 0, slytherin: 0 };
+  answerLog.length = 0;
+  renderQuestion();
+}
+
+renderQuestion();
+</script>
+</body>
+</html>
